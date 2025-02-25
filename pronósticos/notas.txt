@@ -1,0 +1,11 @@
+
+
+- PIB: 
+    datos de INEGI: https://www.inegi.org.mx/temas/pib/#tabulados
+    la tabla proveniente de INEGI contiene ya los cambios porcentuales trimestrales y anuales
+
+
+- Tasa de Interés
+    Datos de BANXICO: https://www.banxico.org.mx/mercados/tasas-precios-referencia-valo.html
+    se identificó mediante la creación de la varibale "trimestre" los inicios de trimestre = 1
+
