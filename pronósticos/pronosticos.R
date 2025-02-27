@@ -19,15 +19,14 @@ pib_anual = data %>%
 pib_trimestral = data %>%
   filter(periodo %in% c("T1","T2","T3","T4"))
 
-
-
+###############################
 #CREACIÓN DE TABLA TASA INTERES
 #Extraemos el archivo
 archivo = file.choose()
 data = read.csv(archivo)
 
-#creamos variable "trimestre" para identificar la serie
-#temporal por trimestre y empatar con PIB de ser necesario
+#creamos variable "trimestre" para identificar la serie temporal
+# por trimestre y empatar con PIB de ser necesario
 tasa_interes = data %>%
   mutate(fecha = as.Date(fecha, format = "%d/%m/%Y")) %>%  # Especificar formato correcto
   arrange(fecha) %>%  # Ordenar correctamente
@@ -44,8 +43,7 @@ tasa_interes = data %>%
   ) %>%
   select(-mes, -año)
 
-
-
+######################################
 #CREANDO LA TABLA DE TIPO DE CAMBIO
 archivo = file.choose()
 data = read.csv(archivo)
@@ -64,6 +62,39 @@ tipo_cambio = data%>%
     )
     ) %>%
   select(-mes, -año)
+
+#################################
+#CREANDO TABLA DE INFLACION
+archivo = file.choose()
+data = read.csv(archivo)
+
+inflacion = data %>% 
+  mutate(fecha = as.Date(fecha, format = "%d/%m/%Y")) %>%  # Especificar formato correcto
+  arrange(fecha) %>%  # Ordenar correctamente
+  mutate(
+    mes = month(fecha),
+    año = year(fecha),
+    trimestre = ifelse(
+      row_number() == 1 |  # La primera observación siempre es 1
+        (mes %in% c(1, 4, 7, 10) & (lag(mes, default = 0) != mes | lag(año, default = 0) != año)), 
+      1, 
+      0
+    )
+  ) %>%
+  select(-mes, -año)
+
+
+###########################
+#CREANDO TABLA DE DESEMPLEO
+archivo = file.choose()
+data = read.csv(archivo)
+
+desempleo <- data %>%
+  mutate(
+    fecha = as.Date(fecha, format = "%Y-%m-%d"),  # Convertir correctamente
+    fecha = format(fecha, "%d/%m/%Y")  # Cambiar el formato a "DD/MM/YYYY"
+  ) %>%
+  arrange(fecha)
 
 
 
