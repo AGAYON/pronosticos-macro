@@ -118,31 +118,40 @@ desempleo <- data %>%
 #########################
 #CREANDO UNA TABLA GENERAL
 
-# Convertir todas las fechas a formato Date para evitar errores
+# Convertir todas las fechas a formato Date
 pib_trimestral <- pib_trimestral %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
 inflacion <- inflacion %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
 tasa_interes <- tasa_interes %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
 tipo_cambio <- tipo_cambio %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
 
-# Hacer joins asegurando que fecha siempre está presente
+# Eliminar la columna "trimestre" de las series macroeconómicas
+inflacion <- inflacion %>% select(-trimestre)
+tasa_interes <- tasa_interes %>% select(-trimestre)
+tipo_cambio <- tipo_cambio %>% select(-trimestre)
+
+# Hacer joins asegurando que fecha siempre está presente y eliminando duplicados
 general <- pib_trimestral %>%
-  difference_inner_join(inflacion, by = "fecha", max_dist = 5, distance_col = "diff_inflacion") %>%
-  group_by(fecha, trimestre) %>%  # Ahora se agrupa también por trimestre
-  slice_min(diff_inflacion, with_ties = FALSE) %>%
+  difference_left_join(inflacion, by = "fecha", max_dist = 5, distance_col = "diff_inflacion") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%  # Restaurar fecha si se fragmentó en .x y .y
+  select(-fecha.x, -fecha.y, -diff_inflacion) %>%  # Limpiar columnas extra
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
   ungroup() %>%
-  select(fecha, trimestre, everything(), -diff_inflacion) %>%  # Asegurar que fecha y trimestre están presentes
   
-  difference_inner_join(tasa_interes, by = "fecha", max_dist = 5, distance_col = "diff_tasa") %>%
-  group_by(fecha, trimestre) %>%
-  slice_min(diff_tasa, with_ties = FALSE) %>%
+  difference_left_join(tasa_interes, by = "fecha", max_dist = 5, distance_col = "diff_tasa") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%
+  select(-fecha.x, -fecha.y, -diff_tasa) %>%
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
   ungroup() %>%
-  select(fecha, trimestre, everything(), -diff_tasa) %>%
   
-  difference_inner_join(tipo_cambio, by = "fecha", max_dist = 5, distance_col = "diff_tc") %>%
-  group_by(fecha, trimestre) %>%
-  slice_min(diff_tc, with_ties = FALSE) %>%
-  ungroup() %>%
-  select(fecha, trimestre, everything(), -diff_tc)
+  difference_left_join(tipo_cambio, by = "fecha", max_dist = 5, distance_col = "diff_tc") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%
+  select(-fecha.x, -fecha.y, -diff_tc) %>%
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
+  ungroup()
+
 
 
 
