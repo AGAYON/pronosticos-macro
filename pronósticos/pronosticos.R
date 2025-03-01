@@ -1,29 +1,48 @@
 #ESTIMACIONES A 5 AÑOS
 
+setwd("C:/SEM 8/Economía del Riesgo/pronósticos/csv")
+
 #librerias
 library(tidyverse)
+library(fuzzyjoin)
 
 ###########################################
 #creación de series temporales
 ###########################################
 
 #CREACIÓN DE TABLA PIB ANUAL
-archivo = file.choose()
-data = read.csv(archivo)
+data = read.csv("pib.csv", stringsAsFactors = FALSE)
 
 #filtramos PIB por datos anuales
 pib_anual = data %>%
   filter(periodo == "Anual")
 
 #filtramos PIB por datos trimestrales
-pib_trimestral = data %>%
-  filter(periodo %in% c("T1","T2","T3","T4"))
+pib_trimestral <- data %>%
+  filter(periodo %in% c("T1", "T2", "T3", "T4")) %>% 
+  mutate(
+    Q1 = ifelse(periodo == "T1", 1, 0),
+    Q2 = ifelse(periodo == "T2", 1, 0),
+    Q3 = ifelse(periodo == "T3", 1, 0),
+    Q4 = ifelse(periodo == "T4", 1, 0),
+    trimestre = ifelse(Q1 == 1 | Q2 == 1 | Q3 == 1 | Q4 == 1,1,0)
+  )%>%
+  mutate(
+    mes = case_when(
+      periodo == "T1" ~ "01",
+      periodo == "T2" ~ "04",
+      periodo == "T3" ~ "07",
+      periodo == "T4" ~ "10"
+    ),
+    fecha = as.Date(paste("01", mes, año, sep = "/"), format = "%d/%m/%Y")
+  ) %>%
+  select(-mes)
 
 ###############################
 #CREACIÓN DE TABLA TASA INTERES
 #Extraemos el archivo
-archivo = file.choose()
-data = read.csv(archivo)
+data = read.csv("tasa_interes.csv", stringsAsFactors = FALSE)
+
 
 #creamos variable "trimestre" para identificar la serie temporal
 # por trimestre y empatar con PIB de ser necesario
@@ -45,8 +64,8 @@ tasa_interes = data %>%
 
 ######################################
 #CREANDO LA TABLA DE TIPO DE CAMBIO
-archivo = file.choose()
-data = read.csv(archivo)
+data = read.csv("tipo_cambio.csv", stringsAsFactors = FALSE)
+
 
 tipo_cambio = data%>%
   mutate(fecha = as.Date(fecha, format = "%d/%m/%Y")) %>%  # Especificar formato correcto
@@ -65,8 +84,8 @@ tipo_cambio = data%>%
 
 #################################
 #CREANDO TABLA DE INFLACION
-archivo = file.choose()
-data = read.csv(archivo)
+data = read.csv("inflacion.csv", stringsAsFactors = FALSE)
+
 
 inflacion = data %>% 
   mutate(fecha = as.Date(fecha, format = "%d/%m/%Y")) %>%  # Especificar formato correcto
@@ -86,8 +105,7 @@ inflacion = data %>%
 
 ###########################
 #CREANDO TABLA DE DESEMPLEO
-archivo = file.choose()
-data = read.csv(archivo)
+data = read.csv("desempleo.csv", stringsAsFactors = FALSE)
 
 desempleo <- data %>%
   mutate(
@@ -95,6 +113,49 @@ desempleo <- data %>%
     fecha = format(fecha, "%d/%m/%Y")  # Cambiar el formato a "DD/MM/YYYY"
   ) %>%
   arrange(fecha)
+
+
+#########################
+#CREANDO UNA TABLA GENERAL
+
+# Convertir todas las fechas a formato Date para evitar errores
+pib_trimestral <- pib_trimestral %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
+inflacion <- inflacion %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
+tasa_interes <- tasa_interes %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
+tipo_cambio <- tipo_cambio %>% mutate(fecha = as.Date(fecha, format = "%d/%m/%Y"))
+
+# Hacer joins asegurando que fecha siempre está presente
+general <- pib_trimestral %>%
+  difference_inner_join(inflacion, by = "fecha", max_dist = 5, distance_col = "diff_inflacion") %>%
+  group_by(fecha, trimestre) %>%  # Ahora se agrupa también por trimestre
+  slice_min(diff_inflacion, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(fecha, trimestre, everything(), -diff_inflacion) %>%  # Asegurar que fecha y trimestre están presentes
+  
+  difference_inner_join(tasa_interes, by = "fecha", max_dist = 5, distance_col = "diff_tasa") %>%
+  group_by(fecha, trimestre) %>%
+  slice_min(diff_tasa, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(fecha, trimestre, everything(), -diff_tasa) %>%
+  
+  difference_inner_join(tipo_cambio, by = "fecha", max_dist = 5, distance_col = "diff_tc") %>%
+  group_by(fecha, trimestre) %>%
+  slice_min(diff_tc, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(fecha, trimestre, everything(), -diff_tc)
+
+
+
+
+
+################
+################
+
+#PRONOSTICOS
+
+################
+################
+
 
 
 
