@@ -5,6 +5,8 @@ setwd("C:/SEM 8/Economía del Riesgo/pronósticos/csv")
 #librerias
 library(tidyverse)
 library(fuzzyjoin)
+library(ranger)
+library(workflowsets)
 
 ###########################################
 #creación de series temporales
@@ -153,10 +155,6 @@ general <- pib_trimestral %>%
   ungroup()
 
 
-
-
-
-
 ################
 ################
 
@@ -165,7 +163,45 @@ general <- pib_trimestral %>%
 ################
 ################
 
+# ⚡ Definir las variables a usar (antes de correr el modelo)
+target_var <- "pib"
+predictors <- c("tasa_objetivo", "pesos_x_dolar", "total_desempleo", "variacion_anual") 
 
+# ⚡ Crear la receta flexible
+receta <- recipe(as.formula(paste(target_var, "~", paste(predictors, collapse = " + "))), data = general) %>%
+  step_naomit(all_predictors(), all_outcomes()) %>%  # Eliminar filas con NA
+  step_normalize(all_numeric_predictors()) %>%  # Normalizar las variables numéricas
+  step_dummy(all_nominal_predictors())  # Convertir variables categóricas en dummies (si hubiera)
+
+# ⚡ Especificar el modelo Random Forest
+modelo_rf <- rand_forest(mode = "regression", trees = 500) %>% 
+  set_engine("ranger")
+
+# ⚡ Crear el workflow (flujo de trabajo)
+workflow_rf <- workflow() %>%
+  add_recipe(receta) %>%
+  add_model(modelo_rf)
+
+# ⚡ Dividir los datos en entrenamiento y prueba (80/20)
+set.seed(123)  # Para reproducibilidad
+split <- initial_split(general, prop = 0.8)
+train_data <- training(split)
+test_data <- testing(split)
+
+# ⚡ Ajustar el modelo con los datos de entrenamiento
+modelo_entrenado <- workflow_rf %>%
+  fit(data = train_data)
+
+# ⚡ Hacer predicciones en los datos de prueba
+predicciones <- predict(modelo_entrenado, new_data = test_data) %>%
+  bind_cols(test_data %>% select(target_var))
+
+# ⚡ Evaluar el rendimiento del modelo
+metricas <- predicciones %>%
+  metrics(truth = !!sym(target_var), estimate = .pred)
+
+# ⚡ Mostrar resultados
+print(metricas)
 
 
 
