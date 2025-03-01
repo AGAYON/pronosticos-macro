@@ -4,16 +4,41 @@
     datos de INEGI: https://www.inegi.org.mx/temas/pib/#tabulados
     la tabla proveniente de INEGI contiene ya los cambios porcentuales trimestrales y anuales
 
+    colnames(pib_trimestral)
+    [1] "año"               "periodo"           "pib"              
+ [4] "sector_primario"   "sector_secundario" "sector_terciario" 
+ [7] "Q1"                "Q2"                "Q3"               
+[10] "Q4"                "trimestre"         "fecha"   
+
 
 - Tasa de Interés
     Datos de BANXICO: https://www.banxico.org.mx/mercados/tasas-precios-referencia-valo.html
     se identificó mediante la creación de la varibale "trimestre" los inicios de trimestre = 1
 
+    colnames(tasa_interes)
+    [1] "fecha"         "tasa_objetivo" "log_tasa" 
+
+
 - Tipo de cambio: 
     Datos de banxico: https://www.banxico.org.mx/SieInternet/
+
+    colnames(tipo_cambio)
+    "fecha"         "pesos_x_dolar"
+
 
 - Inflación
     Datos de banxico: https://www.banxico.org.mx/SieInternet/
 
+    colnames(inflacion)
+    [1] "fecha"                   "variacion_mensual"      
+ [3] "variacion_acumulada"     "variacion_anual"        
+ [5] "subyacente_mensual"      "subyacente_acumulada"   
+ [7] "subyacente_anual"        "no_subyacente_mensual"  
+ [9] "no_subyacente_acumulada" "no_subyacente_anual" 
+
+
 - Desempleo
     Datos de INEGI: https://www.inegi.org.mx/temas/empleo/#tabulados
+
+    colnames(desempleo)
+    [1] "fecha"           "total_desempleo"
