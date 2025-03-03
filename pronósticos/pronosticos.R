@@ -5,8 +5,10 @@ setwd("C:/SEM 8/Economía del Riesgo/pronósticos/csv")
 #librerias
 library(tidyverse)
 library(fuzzyjoin)
-library(ranger)
-library(workflowsets)
+library(tidymodels)
+library(forecast)
+library(ggplot2)
+library(scales)
 
 ###########################################
 #creación de series temporales
@@ -152,7 +154,75 @@ general <- pib_trimestral %>%
   select(-fecha.x, -fecha.y, -diff_tc) %>%
   group_by(fecha) %>%
   slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
-  ungroup()
+  ungroup() %>% 
+  
+  mutate(
+    pib_lag1 = lag(pib, 1),
+    pib_lag2 = lag(pib, 2),
+    pib_lag3 = lag(pib, 3),
+    pib_lag4 = lag(pib, 4),
+    pib_lag5 = lag(pib, 5),
+    pib_lag6 = lag(pib, 6),
+    pib_lag7 = lag(pib, 7),
+    pib_lag8 = lag(pib, 8),
+    pib_lag9 = lag(pib, 9),
+    pib_lag10 = lag(pib, 10),
+    pib_lag11 = lag(pib, 11),
+    pib_lag12 = lag(pib, 12),
+    tasa_cambio_inflacion = log(variacion_anual),
+    across(where(is.character), ~ as.numeric(gsub("[^0-9.-]", "", .)))
+    )
+
+
+
+
+
+
+general <- pib_trimestral %>%
+  difference_left_join(inflacion, by = "fecha", max_dist = 5, distance_col = "diff_inflacion") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%
+  select(-fecha.x, -fecha.y, -diff_inflacion) %>%
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
+  ungroup() %>%
+
+  difference_left_join(tasa_interes, by = "fecha", max_dist = 5, distance_col = "diff_tasa") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%
+  select(-fecha.x, -fecha.y, -diff_tasa) %>%
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
+  ungroup() %>%
+
+  difference_left_join(tipo_cambio, by = "fecha", max_dist = 5, distance_col = "diff_tc") %>%
+  mutate(fecha = coalesce(fecha.x, fecha.y)) %>%
+  select(-fecha.x, -fecha.y, -diff_tc) %>%
+  group_by(fecha) %>%
+  slice_min(abs(as.numeric(difftime(fecha, fecha, units = "days"))), with_ties = FALSE) %>%
+  ungroup() %>%
+
+  mutate(
+    pib_lag1 = lag(pib, 1),
+    pib_lag2 = lag(pib, 2),
+    pib_lag3 = lag(pib, 3),
+    pib_lag4 = lag(pib, 4),
+    pib_lag5 = lag(pib, 5),
+    pib_lag6 = lag(pib, 6),
+    pib_lag7 = lag(pib, 7),
+    pib_lag8 = lag(pib, 8),
+    pib_lag9 = lag(pib, 9),
+    pib_lag10 = lag(pib, 10),
+    pib_lag11 = lag(pib, 11),
+    pib_lag12 = lag(pib, 12),
+    
+    # Asegurar que variacion_anual es numérica antes de aplicar log()
+    variacion_anual = as.numeric(gsub("[^0-9.-]", "", variacion_anual)),
+    tasa_cambio_inflacion = (variacion_anual - lag(variacion_anual)) / lag(variacion_anual),
+    
+    # Convertir caracteres a numérico si quedan otras columnas con texto
+    across(where(is.character), ~ as.numeric(gsub("[^0-9.-]", "", .)))
+  )
+
+
 
 
 ################
@@ -163,45 +233,167 @@ general <- pib_trimestral %>%
 ################
 ################
 
-# ⚡ Definir las variables a usar (antes de correr el modelo)
-target_var <- "pib"
-predictors <- c("tasa_objetivo", "pesos_x_dolar", "total_desempleo", "variacion_anual") 
+# Convertir la fecha al formato correcto y ordenar
+desempleo <- desempleo %>% 
+  mutate(fecha = as.Date(fecha, format = "%d/%m/%Y")) %>%
+  arrange(fecha)
 
-# ⚡ Crear la receta flexible
-receta <- recipe(as.formula(paste(target_var, "~", paste(predictors, collapse = " + "))), data = general) %>%
-  step_naomit(all_predictors(), all_outcomes()) %>%  # Eliminar filas con NA
-  step_normalize(all_numeric_predictors()) %>%  # Normalizar las variables numéricas
-  step_dummy(all_nominal_predictors())  # Convertir variables categóricas en dummies (si hubiera)
+# Crear la serie de tiempo con frecuencia trimestral
+ts_desempleo <- ts(desempleo$total_desempleo, start = c(2005,1), frequency = 4)
 
-# ⚡ Especificar el modelo Random Forest
-modelo_rf <- rand_forest(mode = "regression", trees = 500) %>% 
-  set_engine("ranger")
+# Ajustar el modelo ARIMA
+modelo <- auto.arima(ts_desempleo)
 
-# ⚡ Crear el workflow (flujo de trabajo)
-workflow_rf <- workflow() %>%
-  add_recipe(receta) %>%
-  add_model(modelo_rf)
+# Generar pronóstico a 5 años (20 trimestres)
+pronostico <- forecast(modelo, h = 20)
 
-# ⚡ Dividir los datos en entrenamiento y prueba (80/20)
-set.seed(123)  # Para reproducibilidad
-split <- initial_split(general, prop = 0.8)
-train_data <- training(split)
-test_data <- testing(split)
+# Crear data frame de la serie original con fechas reales
+df_original <- data.frame(
+  fecha = seq(from = min(desempleo$fecha), by = "quarter", length.out = length(ts_desempleo)),
+  valor = as.numeric(ts_desempleo)
+)
 
-# ⚡ Ajustar el modelo con los datos de entrenamiento
-modelo_entrenado <- workflow_rf %>%
-  fit(data = train_data)
+# Crear data frame del pronóstico asegurando 20 observaciones completas
+df_pronostico <- data.frame(
+  fecha = seq(from = max(df_original$fecha) + 90, by = "quarter", length.out = 20),  # Cada trimestre = 90 días aprox.
+  media = pronostico$mean,
+  lower_80 = pronostico$lower[,1],
+  upper_80 = pronostico$upper[,1],
+  lower_95 = pronostico$lower[,2],
+  upper_95 = pronostico$upper[,2]
+)
 
-# ⚡ Hacer predicciones en los datos de prueba
-predicciones <- predict(modelo_entrenado, new_data = test_data) %>%
-  bind_cols(test_data %>% select(target_var))
+# Asegurar que todas las columnas tienen 20 valores
+df_pronostico <- df_pronostico %>%
+  mutate(
+    lower_80 = ifelse(is.na(lower_80), tail(lower_80, 1), lower_80),
+    upper_80 = ifelse(is.na(upper_80), tail(upper_80, 1), upper_80),
+    lower_95 = ifelse(is.na(lower_95), tail(lower_95, 1), lower_95),
+    upper_95 = ifelse(is.na(upper_95), tail(upper_95, 1), upper_95)
+  )
 
-# ⚡ Evaluar el rendimiento del modelo
-metricas <- predicciones %>%
-  metrics(truth = !!sym(target_var), estimate = .pred)
+# Definir los años para mostrar en el eje X cada 5 años
+años_marcados <- seq(from = as.Date(paste(format(min(df_original$fecha), "%Y"), "-01-01", sep="")), 
+                     to = as.Date(paste(format(max(df_pronostico$fecha), "%Y"), "-01-01", sep="")), 
+                     by = "5 years")
 
-# ⚡ Mostrar resultados
-print(metricas)
+# Crear la gráfica con formato corregido
+ggplot() +
+  # Línea de la serie original
+  geom_line(data = df_original, aes(x = fecha, y = valor), color = "black", size = 1) +
+  
+  # Área sombreada para el intervalo de confianza del 95%
+  geom_ribbon(data = df_pronostico, aes(x = fecha, ymin = lower_95, ymax = upper_95), fill = "gray80", alpha = 0.5) +
+  
+  # Área sombreada para el intervalo de confianza del 80%
+  geom_ribbon(data = df_pronostico, aes(x = fecha, ymin = lower_80, ymax = upper_80), fill = "gray60", alpha = 0.5) +
+  
+  # Línea de la predicción media
+  geom_line(data = df_pronostico, aes(x = fecha, y = media), color = "gray30", size = 1, linetype = "dashed") +
+  
+  # Líneas verticales para cada año
+  geom_vline(xintercept = seq(from = min(df_original$fecha), to = max(df_pronostico$fecha), by = "1 year"), 
+             linetype = "dotted", color = "gray70") +
+  
+  # Etiquetas del eje X cada 5 años
+  scale_x_date(breaks = años_marcados, date_labels = "%Y") +
+  
+  # Formato del eje Y en millones con límite mínimo en 0
+  scale_y_continuous(labels = label_number(scale = 1e-6, accuracy = 0.1, suffix = "M"), limits = c(0, NA)) +
+  
+  # Etiquetas y formato
+  ggtitle("Desempleo a 5 años") +
+  ylab("Total de Desempleo") +
+  xlab("Año") +
+  theme_minimal()  # Fondo blanco
+
+
+
+
+# Lista de variables a analizar
+variables <- c("pib", "variacion_anual", "tasa_cambio_inflacion", "log_tasa", "pesos_x_dolar", "tasa_objetivo")
+
+# Diccionario de nombres para etiquetas en los gráficos
+nombres_variables <- list(
+  "pib" = "PIB",
+  "variacion_anual" = "Inflación",
+  "log_tasa" = "Logaritmo de Tasa de Interés",
+  "pesos_x_dolar" = "MX/USD",
+  "tasa_objetivo" = "Tasa de Referencia",
+  "tasa_cambio_inflacion" = "Cambio en inflación"
+)
+
+# Función para hacer el pronóstico y graficar
+pronosticar_variable <- function(var_name, general) {
+  # Eliminar filas donde haya NA en la variable seleccionada
+  datos_filtrados <- general[!is.na(general[[var_name]]), ]
+  
+  # Convertir en serie de tiempo
+  ts_var <- ts(datos_filtrados[[var_name]], start = c(min(datos_filtrados$año), min(datos_filtrados$periodo)), frequency = 4) 
+  
+  # Aplicar media móvil con ventana de 6 trimestres
+  var_ma <- ma(ts_var, order = 6, centre = TRUE)
+  
+  # Eliminar los valores NA de la media móvil
+  var_ma_clean <- na.omit(var_ma)
+  
+  # Ajustar modelo ARIMA
+  modelo <- auto.arima(var_ma_clean)
+  pronostico <- forecast(modelo, h = 20)
+  
+  # Crear dataframe de pronóstico
+  df_pronostico <- data.frame(
+    fecha = seq(from = end(ts_var)[1] + end(ts_var)[2] / 4, length.out = 20, by = 0.25),
+    media = pronostico$mean,
+    lower_80 = pronostico$lower[,1],
+    upper_80 = pronostico$upper[,1],
+    lower_95 = pronostico$lower[,2],
+    upper_95 = pronostico$upper[,2]
+  )
+  
+  # Convertir serie de tiempo original a dataframe para ggplot
+  df_original <- data.frame(fecha = time(ts_var), valor = as.numeric(ts_var))
+  
+  # Definir años para mostrar cada 5 años
+  años_marcados <- seq(floor(min(df_original$fecha)), ceiling(max(df_pronostico$fecha)), by = 5)
+  
+  # Obtener el nombre descriptivo de la variable
+  nombre_grafico <- nombres_variables[[var_name]]
+  
+  # Crear el gráfico en escala de grises
+  p <- ggplot() +
+    # Línea de la serie original
+    geom_line(data = df_original, aes(x = fecha, y = valor), color = "black", size = 1) +
+    
+    # Área sombreada para el intervalo de confianza del 95%
+    geom_ribbon(data = df_pronostico, aes(x = fecha, ymin = lower_95, ymax = upper_95), fill = "gray80", alpha = 0.5) +
+    
+    # Área sombreada para el intervalo de confianza del 80%
+    geom_ribbon(data = df_pronostico, aes(x = fecha, ymin = lower_80, ymax = upper_80), fill = "gray60", alpha = 0.5) +
+    
+    # Línea de la predicción media
+    geom_line(data = df_pronostico, aes(x = fecha, y = media), color = "gray30", size = 1, linetype = "dashed") +
+    
+    # Líneas verticales cada 5 años
+    geom_vline(xintercept = años_marcados, linetype = "dotted", color = "gray50") +
+    
+    # Etiquetas y formato
+    ggtitle(paste(nombre_grafico, "a 5 años")) +
+    ylab(nombre_grafico) +
+    xlab("Año") +
+    scale_x_continuous(breaks = años_marcados) +
+    theme_minimal()
+  
+  # Mostrar la gráfica
+  print(p)
+}
+
+# Generar gráficos para cada variable por separado
+for (var in variables) {
+  pronosticar_variable(var, general)
+}
+
+
 
 
 
